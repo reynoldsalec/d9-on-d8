@@ -22,14 +22,8 @@ proxy:
     - mail.d9ond8.lndo.site
 
 services:
-  database:
-    config:
-      database: lando/mysql/my.cnf
   appserver:
-    type: php:7.4
     xdebug: true
-    config:
-      php: lando/php/php.ini
     overrides:
       environment:
         # Support debugging Drush with XDEBUG.
