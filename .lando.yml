@@ -1,0 +1,146 @@
+name: d9ond8
+recipe: pantheon
+config:
+  framework: drupal8
+  xdebug: false
+
+# Excludes rarely edited folder / files to win performance.
+#excludes:
+#   - drush
+#   - scripts
+#   - vendor
+#   - web/profiles/contrib
+#   - web/modules/contrib
+#   - web/themes/contrib
+#   - web/libraries
+#  - "!vendor/simplesamlphp/simplesamlphp"
+
+proxy:
+  node:
+    - bs.d9ond8.lndo.site:3000
+  mail:
+    - mail.d9ond8.lndo.site
+
+services:
+  database:
+    config:
+      database: lando/mysql/my.cnf
+  appserver:
+    type: php:7.4
+    xdebug: true
+    config:
+      php: lando/php/php.ini
+    overrides:
+      environment:
+        # Support debugging Drush with XDEBUG.
+        XDEBUG_MODE: 'debug'
+        PHP_IDE_CONFIG: "serverName=appserver"
+        MINK_DRIVER_ARGS: '["chrome", null, "http://chromedriver:4444/wd/hub"]'
+        MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", null, "http://chromedriver:4444/wd/hub"]'
+        MINK_DRIVER_CLASS: 'Drupal\FunctionalJavascriptTests\DrupalSelenium2Driver'
+        SIMPLETEST_DB: 'mysql://drupal8:drupal8@database/drupal8'
+        SIMPLETEST_BASE_URL: 'https://d9ond8.lndo.site/'
+        BEHAT_PARAMS: |-
+          {
+            "extensions":{
+              "Behat\\MinkExtension":{
+                "selenium2":{
+                  "browser": "chrome",
+                  "wd_host": "selenium-chrome:4444/wd/hub",
+                  "capabilities": {
+                    "marionette": null,
+                    "browserName": "chrome",
+                    "browser": "chrome",
+                    "chrome": {
+                      "switches": [
+                        "--disable-gpu",
+                        "--window-size=1280,720",
+                        "--no-sandbox",
+                        "--disable-web-security",
+                        "--disable-extensions",
+                        "--start-maximized"
+                      ]
+                    }
+                  }
+                },
+                "default_session":"selenium2"
+              }
+            }
+          }
+  mail:
+    type: mailhog
+    portforward: true
+    hogfrom:
+      - appserver
+  selenium-chrome:
+    type: compose
+    app_mount: false
+    services:
+      # Chrome 74
+      # Feed free to use a newer image
+      image: selenium/standalone-chrome-debug:3.141.59-neon
+      environment:
+        TZ: Europe/Paris
+        START_XVBF: 'false'
+      volumes:
+        - /dev/shm:/dev/shm
+      command: /opt/bin/entry_point.sh
+  node:
+    type: node:14
+    build:
+      - npm install
+    globals:
+      yarn: latest
+      gulp-cli: latest
+  python:
+    type: python:2.7
+
+tooling:
+  npm:
+    service: node
+  node:
+    service: node
+  gulp:
+    service: node
+  yarn:
+    service: node
+  behat:
+    service: appserver
+    description: Run behat tests locally.
+    cmd: "/app/vendor/bin/behat -c /app/tests/behat/behat.yml -p lando"
+  chromedriver:
+    service: chromedriver
+    description: "Run chromedriver commands."
+  phpunit:
+    service: appserver
+    cmd: /app/vendor/bin/phpunit
+  phpcbf:
+    service: appserver
+    description: Run PHP Code Beautifier fixes
+    cmd: "/app/vendor/bin/phpcbf --standard=Drupal --extensions=php,module,inc,install,test,profile,theme,css,info,txt,md --ignore=node_modules,bower_components,vendor"
+  phpcs:
+    service: appserver
+    description: Run PHP Code Beautifier sniffer
+    cmd: "/app/vendor/bin/phpcs --standard=Drupal --extensions=php,module,inc,install,test,profile,theme,css,info,txt,md --ignore=node_modules,bower_components,vendor"
+  backstop:
+    service: qa
+    cmd:
+      - "backstop reference --config=.ci/test/visual-regression/backstopConfig.js"
+      - "backstop test --config=/app/.ci/test/visual-regression/backstopConfig.js"
+  vim:
+    service: appserver
+  xdebug-on:
+    service: appserver
+    description: Enable Xdebug.
+    user: root
+    cmd:
+      - docker-php-ext-enable xdebug && pkill -o -USR2 php-fpm || /etc/init.d/apache2 reload
+      - tput setaf 2 && echo "Xdebug On" && tput sgr 0 && echo
+
+  xdebug-off:
+    service: appserver
+    description: Disable Xdebug.
+    user: root
+    cmd:
+      - rm /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini && pkill -o -USR2 php-fpm || /etc/init.d/apache2 reload
+      - tput setaf 1 && echo "Xdebug Off" && tput sgr 0 && echo
